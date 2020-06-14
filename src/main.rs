@@ -42,12 +42,16 @@ async fn get_description(name: String) -> DescriptionResult<PokemonDescription> 
         Err(_err) => return Err(PokemonServiceError::PokemonNotFound),
     };
 
-    let descs = poke.flavor_text_entries;
-    println!("{:?}", descs);
+    let flavor_texts = poke.flavor_text_entries;
+    let mut iter_flavor_texts = flavor_texts.iter();
+    let description_en = iter_flavor_texts.find(
+        |&flavor_text| 
+            flavor_text.language.name == "en" && 
+            flavor_text.version.as_ref().unwrap().name == "omega-ruby");
     
     Ok(PokemonDescription {
         name,
-        description: "Mocked pokemon's description".to_string()
+        description: description_en.unwrap().flavor_text.to_string()
     })
 }
 
