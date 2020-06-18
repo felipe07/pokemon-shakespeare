@@ -1,39 +1,13 @@
-use std::collections::HashMap;
+#![feature(proc_macro_hygiene, decl_macro)]
 
-use actix_http::ResponseBuilder;
-use actix_web::{
-    client::Client, error, get, http::header, http::StatusCode, web, App, HttpResponse,
-    HttpServer, Result,
-};
-use failure::Fail;
+#[macro_use] extern crate rocket;
+#[macro_use] extern crate rocket_contrib;
+extern crate reqwest;
+
+use rocket_contrib::json::{Json};
+use serde::{Serialize, Deserialize};
 use pokerust::{FromName, PokemonSpecies};
-use serde::{Deserialize, Serialize};
-use bincode::{deserialize};
-
-#[derive(Serialize, Fail, Debug)]
-enum PokemonServiceError {
-    #[fail(display = "Pokemon not found")]
-    PokemonNotFound,
-    #[fail(display = "Internal error")]
-    InternalError,
-}
-
-impl error::ResponseError for PokemonServiceError {
-    fn error_response(&self) -> HttpResponse {
-        ResponseBuilder::new(self.status_code())
-            .set_header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-            .body(self.to_string())
-    }
-
-    fn status_code(&self) -> StatusCode {
-        match *self {
-            PokemonServiceError::PokemonNotFound => StatusCode::NOT_FOUND,
-            PokemonServiceError::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-type DescriptionResult<T> = Result<T, PokemonServiceError>;
+use reqwest::ClientBuilder;
 
 #[derive(Serialize)]
 struct PokemonDescription {
@@ -41,31 +15,35 @@ struct PokemonDescription {
     description: String,
 }
 
-#[derive(Deserialize)]
-struct TranslationSuccess {
-    total: u32,
+#[derive(Serialize, Debug)]
+struct PokemonError {
+    status: String,
+    reason: String,
 }
 
 #[derive(Deserialize)]
-struct TranslationContent {
-    translated: String,
-    text: String,
-    translation: String,
+struct ContentsJson {
+    translated: String
 }
 
 #[derive(Deserialize)]
-struct PokemonDescriptionTranslation {
-    success: TranslationSuccess,
-    contents: TranslationContent,
+struct TransationResponse {
+    contents: ContentsJson
 }
 
-async fn get_description(name: String) -> DescriptionResult<PokemonDescription> {
-    let poke = match PokemonSpecies::from_name(&name) {
-        Ok(poke) => poke,
-        Err(_err) => return Err(PokemonServiceError::PokemonNotFound),
+type ServiceResult<T> = Result<T, PokemonError>;
+type ApiResult<T> = Result<Json<T>, Json<PokemonError>>;
+
+fn fetch_description(name: &str) -> ServiceResult<String> {
+    let pokemon_name = match PokemonSpecies::from_name(&name) {
+        Ok(pokemon_name) => pokemon_name,
+        Err(_err) => return Err(PokemonError {
+            status: String::from("error"),
+            reason: String::from("Pokemon was not found")
+        }),
     };
 
-    let flavor_texts = poke.flavor_text_entries;
+    let flavor_texts = pokemon_name.flavor_text_entries;
     let mut iter_flavor_texts = flavor_texts.iter();
     let flavor_text_en = iter_flavor_texts.find(|&flavor_text| {
         flavor_text.language.name == "en"
@@ -75,54 +53,74 @@ async fn get_description(name: String) -> DescriptionResult<PokemonDescription> 
         .unwrap()
         .flavor_text
         .to_string()
-        .replace("\n", " ");
-    //let translation: PokemonDescriptionTranslation = translate(description_en).await?;
-    translate(&description_en).await;
-    Ok(PokemonDescription {
+        .replace("\n", "");
+    
+    Ok(description_en)
+}
+
+fn translate(description: &str) -> ServiceResult<String> {
+    let body = json!({
+        "text": description
+    });
+    let api_url = "https://api.funtranslations.com/translate/shakespeare.json";
+    
+    let client = match ClientBuilder::new().build() {
+        Ok(client) => client,
+        Err(_err) => return Err(PokemonError {
+            status: String::from("error"),
+            reason: String::from("Not possible to establish connection with translation service")
+        })
+    };
+    
+    let mut response = match client.post(api_url).json(&body).send() {
+        Ok(response) => response,
+        Err(_err) => return Err(PokemonError {
+            status: String::from("error"),
+            reason: String::from("Not possible to obtain translation")
+        })
+    };
+
+    let response_json: TransationResponse = match response.json() {
+        Ok(response_json) => response_json,
+        Err(_err) => return Err(PokemonError {
+            status: String::from("error"),
+            reason: String::from("Translation does not contain valid JSON")
+        })
+    };
+
+    Ok(response_json.contents.translated)
+}
+
+#[get("/<name>", format = "json")]
+fn get_by(name: String) -> ApiResult<PokemonDescription> {
+    let description = match fetch_description(&name) {
+        Ok(description) => description,
+        Err(err) => return Err(Json(err)),
+    };
+    let translation = match translate(&description) {
+        Ok(translation) => translation,
+        Err(err) => return Err(Json(err)),
+    };
+    Ok(Json(PokemonDescription {
         name,
-        description: description_en
+        description: translation
+    }))
+}
+
+#[catch(404)]
+fn not_found() -> Json<PokemonError> {
+    Json(PokemonError {
+        status: String::from("error"),
+        reason: String::from("Resource was not found")
     })
 }
 
-//async fn translate(description_en: String) -> DescriptionResult<PokemonDescriptionTranslation> {
-async fn translate(description_en: &str) {
-    let request_url = "https://api.funtranslations.com/translate/shakespeare.json";
-
-    let mut params = HashMap::new();
-    params.insert("text", description_en);
-
-    let client = Client::default();
-    client::post(url)
-        .send_form(&params)
-        .from_err()
-        .and_then(|res: ClientResponse| {
-            println!("{:?}", res);
-            //Ok(HttpResponse::Ok().body("inside future"))
-        })
-        .responder()
-
-    /*let content = match translationCall {
-        Ok(content) => &content.body().await.unwrap(),
-        Err(_err) => return Err(PokemonServiceError::InternalError),
-    };*/
-
-    // let d = deserialize(&content)?;
-    //println!("{:?}", translationCall);
+fn rocket() -> rocket::Rocket {
+    rocket::ignite()
+        .mount("/pokemon", routes![get_by])
+        .register(catchers![not_found])
 }
 
-#[get("/pokemon/{name}")]
-async fn description(name: web::Path<String>) -> Result<HttpResponse, PokemonServiceError> {
-    let result = get_description(name.to_string()).await;
-    match result {
-        Ok(desc) => Ok(HttpResponse::Ok().json(desc)),
-        Err(err) => Err(err),
-    }
-}
-
-#[actix_rt::main]
-async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(description))
-        .bind("127.0.0.1:8088")?
-        .run()
-        .await
+fn main() {
+    rocket().launch();
 }
