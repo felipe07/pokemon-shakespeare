@@ -5,21 +5,11 @@
 extern crate reqwest;
 
 use rocket_contrib::json::{Json};
-use serde::{Serialize, Deserialize};
-use pokerust::{FromName, PokemonSpecies};
+use serde::{Deserialize};
 use reqwest::ClientBuilder;
 
-#[derive(Serialize)]
-struct PokemonDescription {
-    name: String,
-    description: String,
-}
-
-#[derive(Serialize, Debug)]
-struct PokemonError {
-    status: String,
-    reason: String,
-}
+mod types;
+mod description;
 
 #[derive(Deserialize)]
 struct ContentsJson {
@@ -31,34 +21,7 @@ struct TransationResponse {
     contents: ContentsJson
 }
 
-type ServiceResult<T> = Result<T, PokemonError>;
-type ApiResult<T> = Result<Json<T>, Json<PokemonError>>;
-
-fn fetch_description(name: &str) -> ServiceResult<String> {
-    let pokemon_name = match PokemonSpecies::from_name(&name) {
-        Ok(pokemon_name) => pokemon_name,
-        Err(_err) => return Err(PokemonError {
-            status: String::from("error"),
-            reason: String::from("Pokemon was not found")
-        }),
-    };
-
-    let flavor_texts = pokemon_name.flavor_text_entries;
-    let mut iter_flavor_texts = flavor_texts.iter();
-    let flavor_text_en = iter_flavor_texts.find(|&flavor_text| {
-        flavor_text.language.name == "en"
-            && flavor_text.version.as_ref().unwrap().name == "omega-ruby"
-    });
-    let description_en = flavor_text_en
-        .unwrap()
-        .flavor_text
-        .to_string()
-        .replace("\n", "");
-    
-    Ok(description_en)
-}
-
-fn translate(description: &str) -> ServiceResult<String> {
+fn translate(description: &str) -> types::ServiceResult<String> {
     let body = json!({
         "text": description
     });
@@ -66,7 +29,7 @@ fn translate(description: &str) -> ServiceResult<String> {
     
     let client = match ClientBuilder::new().build() {
         Ok(client) => client,
-        Err(_err) => return Err(PokemonError {
+        Err(_err) => return Err(types::PokemonError {
             status: String::from("error"),
             reason: String::from("Not possible to establish connection with translation service")
         })
@@ -74,7 +37,7 @@ fn translate(description: &str) -> ServiceResult<String> {
     
     let mut response = match client.post(api_url).json(&body).send() {
         Ok(response) => response,
-        Err(_err) => return Err(PokemonError {
+        Err(_err) => return Err(types::PokemonError {
             status: String::from("error"),
             reason: String::from("Not possible to obtain translation")
         })
@@ -82,7 +45,7 @@ fn translate(description: &str) -> ServiceResult<String> {
 
     let response_json: TransationResponse = match response.json() {
         Ok(response_json) => response_json,
-        Err(_err) => return Err(PokemonError {
+        Err(_err) => return Err(types::PokemonError {
             status: String::from("error"),
             reason: String::from("Translation does not contain valid JSON")
         })
@@ -92,24 +55,24 @@ fn translate(description: &str) -> ServiceResult<String> {
 }
 
 #[get("/<name>", format = "json")]
-fn get_by(name: String) -> ApiResult<PokemonDescription> {
-    let description = match fetch_description(&name) {
-        Ok(description) => description,
+fn get_by(name: String) -> types::ApiResult<types::PokemonDescription> {
+    let description = match description::fetch_description(&name) {
+        Ok(description) => description.to_owned(),
         Err(err) => return Err(Json(err)),
     };
     let translation = match translate(&description) {
         Ok(translation) => translation,
         Err(err) => return Err(Json(err)),
     };
-    Ok(Json(PokemonDescription {
+    Ok(Json(types::PokemonDescription {
         name,
         description: translation
     }))
 }
 
 #[catch(404)]
-fn not_found() -> Json<PokemonError> {
-    Json(PokemonError {
+fn not_found() -> Json<types::PokemonError> {
+    Json(types::PokemonError {
         status: String::from("error"),
         reason: String::from("Resource was not found")
     })
