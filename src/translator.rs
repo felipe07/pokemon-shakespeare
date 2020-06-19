@@ -1,22 +1,14 @@
 extern crate reqwest;
 
-use reqwest::ClientBuilder;
+use reqwest::Client;
 use crate::types::{ServiceResult, PokemonError, Transation};
 
 const API_URL: &str = "https://api.funtranslations.com/translate/shakespeare.json";
 
-pub fn translate(description: &str) -> ServiceResult<String> {
+pub fn translate(description: &str, client: &Client) -> ServiceResult<String> {
     let body = json!({
         "text": description
     });
-    
-    let client = match ClientBuilder::new().build() {
-        Ok(client) => client,
-        Err(_err) => return Err(PokemonError {
-            status: String::from("error"),
-            reason: String::from("Not possible to establish connection with translation service")
-        })
-    };
     
     let mut response = match client.post(API_URL).json(&body).send() {
         Ok(response) => response,
