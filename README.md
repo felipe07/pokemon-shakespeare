@@ -15,11 +15,20 @@ The REST API was build using [Rocket](https://rocket.rs/v0.4/). The following st
 
 ### Prerequisites
 
-Apart from Rust itself no particular prerequisites are necessary if you run the application on Mac OS or Linux. If you use Windows you will need to instal the .Net build tools in order to compile and run Rust binaries.
+Apart from Rust itself no particular prerequisites are necessary if you run the application on Mac OS or GNU/Linux. If you use Windows you will need to instal the .Net build tools in order to compile and run Rust binaries.
 
 ## Getting the pokemon description in shakespeare
 
 `curl --location --request GET 'http://localhost:8000/pokemon/pikachu'`
+
+The response should be:
+
+```javascript
+{
+  "name": "pikachu",
+  "description": "Whenever pikachu cometh across something new, 't blasts 't with a jolt of electricity. If 't be true thee cometh across ablackened berry,  't’s evidence yond this pokémon did misprision theintensity of its charge."
+}
+```
 
 ## Running the tests
 
