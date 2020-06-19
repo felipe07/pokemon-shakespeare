@@ -17,6 +17,10 @@ The REST API was build using [Rocket](https://rocket.rs/v0.4/). The following st
 
 Apart from Rust itself no particular prerequisites are necessary if you run the application on Mac OS or Linux. If you use Windows you will need to instal the .Net build tools in order to compile and run Rust binaries.
 
+## Getting the pokemon description in shakespeare
+
+`curl --location --request GET 'http://localhost:8000/pokemon/pikachu'`
+
 ## Running the tests
 
 `cargo test`
