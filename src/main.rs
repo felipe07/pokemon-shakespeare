@@ -2,10 +2,13 @@
 
 #[macro_use] extern crate rocket;
 #[macro_use] extern crate rocket_contrib;
+	
+#[cfg(test)] mod tests;
 
 use rocket_contrib::json::{Json};
 use rocket::State;
 use reqwest::{Client, ClientBuilder};
+
 mod types;
 mod description;
 mod translator;
@@ -20,6 +23,7 @@ fn get_by(name: String, client: State<Client>) -> types::ApiResult<types::Pokemo
         Ok(translation) => translation.to_owned(),
         Err(err) => return Err(Json(err)),
     };
+
     Ok(Json(types::PokemonDescription {
         name,
         description: translation
