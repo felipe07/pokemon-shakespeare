@@ -37,7 +37,7 @@ The response should be:
 ## Built With
 
 * [Rocket](https://rocket.rs/v0.4/) - The web framework used
-* [Pokeapi](https://pokeapi.co/) - Wrapper for [Pokeapi](https://pokeapi.co/)
+* [Pokerust](https://gitlab.com/lunik1/pokerust) - Wrapper for [Pokeapi](https://pokeapi.co/)
 
 ## Things to improve
 
